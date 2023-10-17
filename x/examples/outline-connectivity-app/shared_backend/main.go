@@ -15,12 +15,16 @@
 package shared_backend
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"net/http"
 	"net/url"
 	"runtime"
 	"strconv"
@@ -66,6 +70,7 @@ type ConnectivityTestRequest struct {
 	Domain    string                         `json:"domain"`
 	Resolvers []string                       `json:"resolvers"`
 	Protocols ConnectivityTestProtocolConfig `json:"protocols"`
+	ReportTo  string                         `json:"reportTo"`
 }
 
 type sessionConfig struct {
@@ -142,6 +147,8 @@ func ConnectivityTest(request ConnectivityTestRequest) ([]ConnectivityTestResult
 					Error:      makeErrorRecord(testErr),
 				})
 			}
+			// send report after each test
+			sendReport(results[len(results)-1], request.ReportTo)
 		}
 	}
 
@@ -238,4 +245,35 @@ func ParseStringPrefix(utf8Str string) (Prefix, error) {
 		rawBytes[i] = byte(r)
 	}
 	return rawBytes, nil
+}
+
+func sendReport(record ConnectivityTestResult, collectorURL string) error {
+	jsonData, err := json.Marshal(record)
+	if err != nil {
+		fmt.Errorf("Error encoding JSON: %s\n", err)
+		return err
+	}
+
+	req, err := http.NewRequest("POST", collectorURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		fmt.Printf("Error creating the HTTP request: %s\n", err)
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Errorf("Error sending the HTTP request: %s\n", err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Error reading the HTTP response body: %s\n", err)
+		return err
+	}
+	fmt.Printf("Response: %s\n", respBody)
+	return nil
 }
