@@ -26,7 +26,7 @@
     "setup:ios": "yarn build:frontend && CAPACITOR_PLATFORM=ios cap sync ios",
     "watch": "concurrently 'yarn:watch:*'",
     "watch:android": "yarn setup:android && cap open android",
-    "watch:frontend": "vite",
+    "watch:frontend": "vite --host",
     "watch:ios": "yarn setup:ios && cap open ios"
   },
   "version": "0.0.0"
