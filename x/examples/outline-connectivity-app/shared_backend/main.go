@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -83,6 +84,7 @@ type sessionConfig struct {
 type Prefix []byte
 
 func ConnectivityTest(request ConnectivityTestRequest) ([]ConnectivityTestResult, error) {
+	success := false
 	accessKeyParameters, err := parseAccessKey(request.AccessKey)
 	if err != nil {
 		return nil, err
@@ -114,6 +116,10 @@ func ConnectivityTest(request ConnectivityTestRequest) ([]ConnectivityTestResult
 				resolver := &transport.StreamDialerEndpoint{Dialer: streamDialer, Address: resolverAddress}
 				testDuration, testErr = connectivity.TestResolverStreamConnectivity(context.Background(), resolver, resolverAddress)
 
+				if testErr == nil {
+					success = true
+				}
+
 				results = append(results, ConnectivityTestResult{
 					Proxy:      proxyAddress,
 					Resolver:   resolverAddress,
@@ -137,6 +143,10 @@ func ConnectivityTest(request ConnectivityTestRequest) ([]ConnectivityTestResult
 				resolver := &transport.PacketDialerEndpoint{Dialer: packetDialer, Address: resolverAddress}
 				testDuration, testErr = connectivity.TestResolverPacketConnectivity(context.Background(), resolver, resolverAddress)
 
+				if testErr == nil {
+					success = true
+				}
+
 				results = append(results, ConnectivityTestResult{
 					Proxy:      proxyAddress,
 					Resolver:   resolverAddress,
@@ -147,8 +157,26 @@ func ConnectivityTest(request ConnectivityTestRequest) ([]ConnectivityTestResult
 					Error:      makeErrorRecord(testErr),
 				})
 			}
-			// send report after each test
-			sendReport(results[len(results)-1], request.ReportTo)
+			// send report after each test based on sampling rate
+			var samplingRate float64
+			random := rand.Float64()
+			// TODO: make sampling rate configurable
+			if success {
+				samplingRate = 0.1
+			} else {
+				samplingRate = 1.0
+			}
+			if random < samplingRate {
+				err = sendReport(results[len(results)-1], request.ReportTo)
+				if err != nil {
+					log.Fatalf("HTTP request failed: %v", err)
+				} else {
+					fmt.Println("Report sent")
+				}
+			} else {
+				fmt.Println("Report was not sent this time")
+			}
+
 		}
 	}
 
