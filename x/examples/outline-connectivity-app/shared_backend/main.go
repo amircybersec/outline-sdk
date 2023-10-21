@@ -169,7 +169,7 @@ func ConnectivityTest(request ConnectivityTestRequest) ([]ConnectivityTestResult
 			if random < samplingRate {
 				err = sendReport(results[len(results)-1], request.ReportTo)
 				if err != nil {
-					log.Fatalf("HTTP request failed: %v", err)
+					fmt.Println("HTTP request failed: %v", err)
 				} else {
 					fmt.Println("Report sent")
 				}
