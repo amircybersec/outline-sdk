@@ -3,6 +3,7 @@ package sanitizer
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"testing"
 )
 
@@ -42,4 +43,25 @@ func TestIPAddress_MarshalJSON(t *testing.T) {
 	// } else {
 	// 	fmt.Printf("Unmarshalled IPv6: %s\n", ipAddr6.Address)
 	// }
+}
+
+func TestReportMarshalJSON(t *testing.T) {
+	report := Report{
+		Name:       "Example Report",
+		IPv4Addr:   net.ParseIP("192.168.1.1"),
+		IPv6Addr:   net.ParseIP("fe80::1"),
+		OtherField: 12345,
+		NestedStruct: Nested{
+			NestedIP:  net.ParseIP("10.0.0.1"),
+			SomeValue: 42,
+		},
+	}
+
+	jsonData, err := json.Marshal(report)
+	if err != nil {
+		fmt.Println("Error marshaling JSON:", err)
+		t.Errorf("Error marshaling JSON: %v\n", err)
+		return
+	}
+	fmt.Println(string(jsonData))
 }
