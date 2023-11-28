@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -36,6 +35,7 @@ import (
 	"github.com/Jigsaw-Code/outline-sdk/transport/shadowsocks"
 	"github.com/Jigsaw-Code/outline-sdk/x/config"
 	"github.com/Jigsaw-Code/outline-sdk/x/connectivity"
+	"github.com/Jigsaw-Code/outline-sdk/x/report"
 
 	_ "golang.org/x/mobile/bind"
 )
@@ -55,6 +55,14 @@ type ConnectivityTestResult struct {
 	Time       time.Time              `json:"time"`
 	DurationMs int64                  `json:"durationMs"`
 	Error      *ConnectivityTestError `json:"error"`
+}
+
+func (r ConnectivityTestResult) IsSuccess() bool {
+	if r.Error == nil {
+		return true
+	} else {
+		return false
+	}
 }
 
 type ConnectivityTestError struct {
@@ -84,7 +92,7 @@ type sessionConfig struct {
 type Prefix []byte
 
 func ConnectivityTest(request ConnectivityTestRequest) ([]ConnectivityTestResult, error) {
-	success := false
+	var result ConnectivityTestResult
 	accessKeyParameters, err := parseAccessKey(request.AccessKey)
 	if err != nil {
 		return nil, err
@@ -116,11 +124,7 @@ func ConnectivityTest(request ConnectivityTestRequest) ([]ConnectivityTestResult
 				resolver := &transport.StreamDialerEndpoint{Dialer: streamDialer, Address: resolverAddress}
 				testDuration, testErr = connectivity.TestResolverStreamConnectivity(context.Background(), resolver, resolverAddress)
 
-				if testErr == nil {
-					success = true
-				}
-
-				results = append(results, ConnectivityTestResult{
+				result = ConnectivityTestResult{
 					Proxy:      proxyAddress,
 					Resolver:   resolverAddress,
 					Proto:      "tcp",
@@ -128,7 +132,8 @@ func ConnectivityTest(request ConnectivityTestRequest) ([]ConnectivityTestResult
 					Time:       testTime.UTC().Truncate(time.Second),
 					DurationMs: testDuration.Milliseconds(),
 					Error:      makeErrorRecord(testErr),
-				})
+				}
+				results = append(results, result)
 			}
 
 			if request.Protocols.UDP {
@@ -143,11 +148,7 @@ func ConnectivityTest(request ConnectivityTestRequest) ([]ConnectivityTestResult
 				resolver := &transport.PacketDialerEndpoint{Dialer: packetDialer, Address: resolverAddress}
 				testDuration, testErr = connectivity.TestResolverPacketConnectivity(context.Background(), resolver, resolverAddress)
 
-				if testErr == nil {
-					success = true
-				}
-
-				results = append(results, ConnectivityTestResult{
+				result = ConnectivityTestResult{
 					Proxy:      proxyAddress,
 					Resolver:   resolverAddress,
 					Proto:      "udp",
@@ -155,26 +156,31 @@ func ConnectivityTest(request ConnectivityTestRequest) ([]ConnectivityTestResult
 					Time:       testTime.UTC().Truncate(time.Second),
 					DurationMs: testDuration.Milliseconds(),
 					Error:      makeErrorRecord(testErr),
-				})
-			}
-			// send report after each test based on sampling rate
-			var samplingRate float64
-			random := rand.Float64()
-			// TODO: make sampling rate configurable
-			if success {
-				samplingRate = 0.1
-			} else {
-				samplingRate = 1.0
-			}
-			if random < samplingRate {
-				err = sendReport(results[len(results)-1], request.ReportTo)
-				if err != nil {
-					fmt.Println("HTTP request failed: %v", err)
-				} else {
-					fmt.Println("Report sent")
 				}
-			} else {
-				fmt.Println("Report was not sent this time")
+				results = append(results, result)
+			}
+			var r report.Report = result
+			u, err := url.Parse(request.ReportTo)
+			if err != nil {
+				log.Printf("Expected no error, but got: %v", err)
+			}
+			remoteCollector := &report.RemoteCollector{
+				CollectorEndpoint: u,
+				HttpClient:        &http.Client{Timeout: 10 * time.Second},
+			}
+			retryCollector := &report.RetryCollector{
+				Collector:    remoteCollector,
+				MaxRetry:     3,
+				InitialDelay: 1 * time.Second,
+			}
+			c := report.SamplingCollector{
+				Collector:       retryCollector,
+				SuccessFraction: 0.1,
+				FailureFraction: 1.0,
+			}
+			err = c.Collect(context.Background(), r)
+			if err != nil {
+				log.Printf("Failed to collect report: %v\n", err)
 			}
 
 		}
