@@ -12,3 +12,8 @@
 !.yarn/sdks
 !.yarn/versions
 .yarn-integrity
+.pnp.*
+
+#  using Zero Installs
+#.yarn/unplugged
+#.yarn/build-state.yml
