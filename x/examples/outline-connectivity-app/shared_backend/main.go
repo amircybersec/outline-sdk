@@ -15,13 +15,10 @@
 package shared_backend
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -97,32 +94,38 @@ func ConnectivityTest(request ConnectivityTestRequest) ([]ConnectivityTestResult
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("AccessKeyParameters: %v\n", accessKeyParameters)
 
 	proxyIPs, err := net.DefaultResolver.LookupIP(context.Background(), "ip", accessKeyParameters.Hostname)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("ProxyIPs: %v\n", proxyIPs)
 
 	// TODO: limit number of IPs. Or force an input IP?
 	var results []ConnectivityTestResult
 	for _, hostIP := range proxyIPs {
 		proxyAddress := net.JoinHostPort(hostIP.String(), fmt.Sprint(accessKeyParameters.Port))
+		fmt.Printf("ProxyAddress: %v\n", proxyAddress)
 
 		for _, resolverHost := range request.Resolvers {
 			resolverHost := strings.TrimSpace(resolverHost)
 			resolverAddress := net.JoinHostPort(resolverHost, "53")
+			fmt.Printf("ResolverAddress: %v\n", resolverAddress)
 
 			if request.Protocols.TCP {
 				testTime := time.Now()
 				var testErr error
 				var testDuration time.Duration
 
-				streamDialer, err := config.NewStreamDialer("")
+				streamDialer, err := config.NewStreamDialer(request.AccessKey)
 				if err != nil {
 					log.Fatalf("Failed to create StreamDialer: %v", err)
 				}
 				resolver := &transport.StreamDialerEndpoint{Dialer: streamDialer, Address: resolverAddress}
 				testDuration, testErr = connectivity.TestResolverStreamConnectivity(context.Background(), resolver, resolverAddress)
+				fmt.Printf("TestDuration: %v\n", testDuration)
+				fmt.Printf("TestError: %v\n", testErr)
 
 				result = ConnectivityTestResult{
 					Proxy:      proxyAddress,
@@ -141,12 +144,14 @@ func ConnectivityTest(request ConnectivityTestRequest) ([]ConnectivityTestResult
 				var testErr error
 				var testDuration time.Duration
 
-				packetDialer, err := config.NewPacketDialer("")
+				packetDialer, err := config.NewPacketDialer(request.AccessKey)
 				if err != nil {
 					log.Fatalf("Failed to create PacketDialer: %v", err)
 				}
 				resolver := &transport.PacketDialerEndpoint{Dialer: packetDialer, Address: resolverAddress}
 				testDuration, testErr = connectivity.TestResolverPacketConnectivity(context.Background(), resolver, resolverAddress)
+				fmt.Printf("TestDuration: %v\n", testDuration)
+				fmt.Printf("TestError: %v\n", testErr)
 
 				result = ConnectivityTestResult{
 					Proxy:      proxyAddress,
@@ -159,6 +164,9 @@ func ConnectivityTest(request ConnectivityTestRequest) ([]ConnectivityTestResult
 				}
 				results = append(results, result)
 			}
+		}
+		for _, result := range results {
+			fmt.Printf("Result: %v\n", result)
 			var r report.Report = result
 			u, err := url.Parse(request.ReportTo)
 			if err != nil {
@@ -182,7 +190,6 @@ func ConnectivityTest(request ConnectivityTestRequest) ([]ConnectivityTestResult
 			if err != nil {
 				log.Printf("Failed to collect report: %v\n", err)
 			}
-
 		}
 	}
 
@@ -279,35 +286,4 @@ func ParseStringPrefix(utf8Str string) (Prefix, error) {
 		rawBytes[i] = byte(r)
 	}
 	return rawBytes, nil
-}
-
-func sendReport(record ConnectivityTestResult, collectorURL string) error {
-	jsonData, err := json.Marshal(record)
-	if err != nil {
-		fmt.Errorf("Error encoding JSON: %s\n", err)
-		return err
-	}
-
-	req, err := http.NewRequest("POST", collectorURL, bytes.NewBuffer(jsonData))
-	if err != nil {
-		fmt.Printf("Error creating the HTTP request: %s\n", err)
-		return err
-	}
-
-	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Errorf("Error sending the HTTP request: %s\n", err)
-		return err
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("Error reading the HTTP response body: %s\n", err)
-		return err
-	}
-	fmt.Printf("Response: %s\n", respBody)
-	return nil
 }
