@@ -129,7 +129,7 @@ func (c *RetryCollector) Collect(ctx context.Context, report Report) error {
 			if errors.As(err, &e) {
 				break
 			} else {
-				time.Sleep(time.Duration(math.Pow(2, float64(i))) * c.initialDelay)
+				time.Sleep(time.Duration(math.Pow(2, float64(i))) * c.InitialDelay)
 			}
 		} else {
 			return nil
