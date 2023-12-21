@@ -34,13 +34,6 @@ import (
 
 // StreamDialer Tests
 func TestTestResolverStreamConnectivityOk(t *testing.T) {
-	tp := initTracing()
-	defer func() {
-		if err := tp.Shutdown(context.Background()); err != nil {
-			t.Fatalf("Error shutting down tracer provider: %v", err)
-		}
-	}()
-
 	// TODO(fortuna): Run a local resolver and make test not depend on an external server.
 	resolver := &transport.TCPEndpoint{Address: "8.8.8.8:53"}
 	_, err := TestResolverStreamConnectivity(context.Background(), resolver, "example.com")
@@ -71,12 +64,6 @@ func runTestTCPServer(tb testing.TB, handle func(conn *net.TCPConn), running *sy
 }
 
 func TestTestResolverStreamConnectivityRefused(t *testing.T) {
-	tp := initTracing()
-	defer func() {
-		if err := tp.Shutdown(context.Background()); err != nil {
-			t.Fatalf("Error shutting down tracer provider: %v", err)
-		}
-	}()
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}})
 	require.NoError(t, err)
 	// Close right away to ensure the port is closed. The OS will likely not reuse it soon enough.
@@ -103,12 +90,6 @@ func TestTestResolverStreamConnectivityRefused(t *testing.T) {
 }
 
 func TestTestResolverStreamConnectivityReset(t *testing.T) {
-	tp := initTracing()
-	defer func() {
-		if err := tp.Shutdown(context.Background()); err != nil {
-			t.Fatalf("Error shutting down tracer provider: %v", err)
-		}
-	}()
 	var running sync.WaitGroup
 	listener := runTestTCPServer(t, func(conn *net.TCPConn) {
 		// Wait for some data from client. We read one byte to unblock the client write.
@@ -145,12 +126,6 @@ func TestTestResolverStreamConnectivityReset(t *testing.T) {
 }
 
 func TestTestStreamDialerEarlyClose(t *testing.T) {
-	tp := initTracing()
-	defer func() {
-		if err := tp.Shutdown(context.Background()); err != nil {
-			t.Fatalf("Error shutting down tracer provider: %v", err)
-		}
-	}()
 	var running sync.WaitGroup
 	listener := runTestTCPServer(t, func(conn *net.TCPConn) {
 		conn.CloseWrite()
@@ -175,12 +150,6 @@ func TestTestStreamDialerEarlyClose(t *testing.T) {
 }
 
 func TestTestResolverStreamConnectivityTimeout(t *testing.T) {
-	tp := initTracing()
-	defer func() {
-		if err := tp.Shutdown(context.Background()); err != nil {
-			t.Fatalf("Error shutting down tracer provider: %v", err)
-		}
-	}()
 	var running sync.WaitGroup
 	var timeout sync.WaitGroup
 	timeout.Add(1)
@@ -211,12 +180,6 @@ func TestTestResolverStreamConnectivityTimeout(t *testing.T) {
 // PacketDialer tests
 
 func TestTestPacketPacketConnectivityOk(t *testing.T) {
-	tp := initTracing()
-	defer func() {
-		if err := tp.Shutdown(context.Background()); err != nil {
-			t.Fatalf("Error shutting down tracer provider: %v", err)
-		}
-	}()
 	server, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
 	defer server.Close()

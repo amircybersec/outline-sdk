@@ -22,11 +22,15 @@ import (
 	"syscall"
 	"time"
 
-	"go.opentelemetry.io/otel"
-
 	"github.com/Jigsaw-Code/outline-sdk/transport"
 	"github.com/miekg/dns"
 )
+
+var tracer = NewCustomTracer()
+
+// func init() {
+// 	tracer = otel.Tracer("instrumentation/package/name")
+// }
 
 // TestError captures the observed error of the connectivity test.
 type TestError struct {
@@ -51,10 +55,13 @@ func (err *TestError) Unwrap() error {
 // TestResolverStreamConnectivity uses the given [transport.StreamEndpoint] to connect to a DNS resolver and resolve the test domain.
 // The context can be used to set a timeout or deadline, or to pass values to the dialer.
 func TestResolverStreamConnectivity(ctx context.Context, resolver transport.StreamEndpoint, testDomain string) (time.Duration, error) {
-	tracer := otel.Tracer("TestResolverStreamConnectivity")
+	//tracer := NewCustomTracer()
 	ctx, span := tracer.Start(ctx, "TestResolverStreamConnectivity")
 	defer span.End()
-	fmt.Println("TestResolverStreamConnectivity")
+	//tracer := otel.Tracer("TestResolverStreamConnectivity")
+	// ctx, span := tracer.Start(ctx, "TestResolverStreamConnectivity")
+	// defer span.End()
+	// fmt.Println("TestResolverStreamConnectivity")
 	duration, err := testResolver(ctx, resolver.Connect, testDomain)
 	if err != nil {
 		fmt.Println("TestResolverStreamConnectivity error")
@@ -66,7 +73,9 @@ func TestResolverStreamConnectivity(ctx context.Context, resolver transport.Stre
 // TestResolverPacketConnectivity uses the given [transport.PacketEndpoint] to connect to a DNS resolver and resolve the test domain.
 // The context can be used to set a timeout or deadline, or to pass values to the listener.
 func TestResolverPacketConnectivity(ctx context.Context, resolver transport.PacketEndpoint, testDomain string) (time.Duration, error) {
-	tracer := otel.Tracer("TestResolverPacketConnectivity")
+	// tracer := otel.Tracer("TestResolverPacketConnectivity")
+	// ctx, span := tracer.Start(ctx, "TestResolverPacketConnectivity")
+	// defer span.End()
 	ctx, span := tracer.Start(ctx, "TestResolverPacketConnectivity")
 	defer span.End()
 	duration, err := testResolver(ctx, resolver.Connect, testDomain)
@@ -93,7 +102,9 @@ func makeTestError(op string, err error) error {
 }
 
 func testResolver[C net.Conn](ctx context.Context, connect func(context.Context) (C, error), testDomain string) (time.Duration, error) {
-	tracer := otel.Tracer("testResolver")
+	// tracer := otel.Tracer("testResolver")
+	// ctx, parentSpan := tracer.Start(ctx, "testResolver")
+	// defer parentSpan.End()
 	ctx, parentSpan := tracer.Start(ctx, "testResolver")
 	defer parentSpan.End()
 
@@ -108,9 +119,9 @@ func testResolver[C net.Conn](ctx context.Context, connect func(context.Context)
 	}
 	testTime := time.Now()
 	testErr := func() error {
-		ctx, dialSpan := tracer.Start(ctx, "dial")
+		//ctx, dialSpan := tracer.Start(ctx, "dial")
+		_, dialSpan := tracer.Start(ctx, "dial")
 		conn, dialErr := connect(ctx)
-		defer dialSpan.End()
 		if dialErr != nil {
 			dialSpan.RecordError(dialErr)
 			return makeTestError("dial", dialErr)
@@ -118,20 +129,22 @@ func testResolver[C net.Conn](ctx context.Context, connect func(context.Context)
 		defer conn.Close()
 		conn.SetDeadline(deadline)
 		dnsConn := dns.Conn{Conn: conn}
+		dialSpan.End()
 
 		var dnsRequest dns.Msg
 		dnsRequest.SetQuestion(dns.Fqdn(testDomain), dns.TypeA)
-		ctx, writeSpan := tracer.Start(ctx, "write")
+		// ctx, writeSpan := tracer.Start(ctx, "write")
+		_, writeSpan := tracer.Start(ctx, "write")
 		writeErr := dnsConn.WriteMsg(&dnsRequest)
-		defer writeSpan.End()
 		if writeErr != nil {
 			writeSpan.RecordError(writeErr)
 			return makeTestError("write", writeErr)
 		}
+		writeSpan.End()
 
+		// _, readSpan := tracer.Start(ctx, "read")
 		_, readSpan := tracer.Start(ctx, "read")
 		_, readErr := dnsConn.ReadMsg()
-		defer readSpan.End()
 		if readErr != nil {
 			readSpan.RecordError(readErr)
 			// An early close on the connection may cause a "unexpected EOF" error. That's an application-layer error,
@@ -139,6 +152,7 @@ func testResolver[C net.Conn](ctx context.Context, connect func(context.Context)
 			// TODO: figure out how to standardize on those errors.
 			return makeTestError("read", readErr)
 		}
+		readSpan.End()
 		return nil
 	}()
 	duration := time.Since(testTime)
