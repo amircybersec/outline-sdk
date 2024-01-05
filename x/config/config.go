@@ -44,13 +44,16 @@ func parseConfigPart(oneDialerConfig string) (*url.URL, error) {
 }
 
 // NewStreamDialer creates a new [transport.StreamDialer] according to the given config.
-func NewStreamDialer(transportConfig string) (transport.StreamDialer, error) {
-	return WrapStreamDialer(&transport.TCPStreamDialer{}, transportConfig)
+// func NewStreamDialer(transportConfig string) (transport.StreamDialer, error) {
+func NewStreamDialer(transportConfig string) (*StreamDialer, error) {
+	//return WrapStreamDialer(&transport.TCPStreamDialer{}, transportConfig)
+	return WrapStreamDialer(&StreamDialer{StreamDialer: &transport.TCPStreamDialer{}, config: ""}, transportConfig)
 }
 
 // WrapStreamDialer created a [transport.StreamDialer] according to transportConfig, using dialer as the
 // base [transport.StreamDialer]. The given dialer must not be nil.
-func WrapStreamDialer(dialer transport.StreamDialer, transportConfig string) (transport.StreamDialer, error) {
+// func WrapStreamDialer(dialer transport.StreamDialer, transportConfig string) (transport.StreamDialer, error) {
+func WrapStreamDialer(dialer *StreamDialer, transportConfig string) (*StreamDialer, error) {
 	if dialer == nil {
 		return nil, errors.New("base dialer must not be nil")
 	}
@@ -68,7 +71,21 @@ func WrapStreamDialer(dialer transport.StreamDialer, transportConfig string) (tr
 	return dialer, nil
 }
 
-func newStreamDialerFromPart(innerDialer transport.StreamDialer, oneDialerConfig string) (transport.StreamDialer, error) {
+type StreamDialer struct {
+	transport.StreamDialer
+	config string
+}
+
+func (sd *StreamDialer) SanitizedConfig(oneDialerConfig string) string {
+	url, _ := parseConfigPart(oneDialerConfig)
+	if url.User != nil {
+		url.User = 
+
+	return sd.config
+}
+
+// func newStreamDialerFromPart(innerDialer transport.StreamDialer, oneDialerConfig string) (transport.StreamDialer, error) {
+func newStreamDialerFromPart(innerDialer *StreamDialer, oneDialerConfig string) (*StreamDialer, error) {
 	url, err := parseConfigPart(oneDialerConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse config part: %w", err)
@@ -78,7 +95,9 @@ func newStreamDialerFromPart(innerDialer transport.StreamDialer, oneDialerConfig
 	switch strings.ToLower(url.Scheme) {
 	case "socks5":
 		endpoint := transport.StreamDialerEndpoint{Dialer: innerDialer, Address: url.Host}
-		return socks5.NewStreamDialer(&endpoint)
+		//return socks5.NewStreamDialer(&endpoint)
+		dialer, err := socks5.NewStreamDialer(&endpoint)
+		return &StreamDialer{StreamDialer: dialer, config: innerDialer.SanitizedConfig(oneDialerConfig) }, err
 
 	case "split":
 		prefixBytesStr := url.Opaque
