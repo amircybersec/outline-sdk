@@ -20,6 +20,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"syscall"
 
 	"fyne.io/fyne/v2"
@@ -32,6 +33,7 @@ import (
 	"github.com/Jigsaw-Code/outline-sdk/transport"
 	"github.com/Jigsaw-Code/outline-sdk/x/config"
 	"github.com/Jigsaw-Code/outline-sdk/x/httpproxy"
+	"github.com/Jigsaw-Code/outline-sdk/x/sysproxy"
 )
 
 type runningProxy struct {
@@ -126,6 +128,13 @@ func makeAppHeader(title string) *fyne.Container {
 }
 
 func main() {
+	// Create a channel to signal when cleanup is done
+	done := make(chan bool, 1)
+	// Setting up a channel to listen for signals
+	sigs := make(chan os.Signal, 1)
+	// Call the function to handle the signals
+	sysproxy.SafeCloseProxy(done, sigs)
+
 	fyneApp := app.New()
 	if meta := fyneApp.Metadata(); meta.Name == "" {
 		// App not packaged, probably from `go run`.
@@ -176,9 +185,25 @@ func main() {
 		if proxy == nil {
 			// Start proxy.
 			proxy, err = runServer(addressEntry.Text, configEntry.Text)
+			host, port, err := net.SplitHostPort(addressEntry.Text)
+			if err != nil {
+				fmt.Println("failed to parse address: %w", err)
+			}
+			// Set system proxy settings
+			if err := sysproxy.SetProxy(host, port); err != nil {
+				fmt.Println("Error setting up proxy:", err)
+			} else {
+				fmt.Println("Proxy setup successful")
+			}
 		} else {
 			// Stop proxy
 			proxy.Close()
+			// Unset system proxy settings
+			if err := sysproxy.UnsetProxy(); err != nil {
+				fmt.Println("Error setting up proxy:", err)
+			} else {
+				fmt.Println("Proxy unset successful")
+			}
 			proxy = nil
 		}
 		setProxyUI(proxy, err)
@@ -202,4 +227,9 @@ func main() {
 	mainWin.SetContent(content)
 	mainWin.Show()
 	fyneApp.Run()
+
+	// send os signal to stop the program
+	sigs <- syscall.SIGTERM
+	// The program blocks here waiting for the signal
+	<-done
 }
