@@ -20,7 +20,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"syscall"
 
 	"fyne.io/fyne/v2"
@@ -128,13 +127,7 @@ func makeAppHeader(title string) *fyne.Container {
 }
 
 func main() {
-	// Create a channel to signal when cleanup is done
-	done := make(chan bool, 1)
-	// Setting up a channel to listen for signals
-	sigs := make(chan os.Signal, 1)
-	// Call the function to handle the signals
-	sysproxy.SafeCloseProxy(done, sigs)
-
+	defer sysproxy.UnsetProxy()
 	fyneApp := app.New()
 	if meta := fyneApp.Metadata(); meta.Name == "" {
 		// App not packaged, probably from `go run`.
@@ -228,8 +221,4 @@ func main() {
 	mainWin.Show()
 	fyneApp.Run()
 
-	// send os signal to stop the program
-	sigs <- syscall.SIGTERM
-	// The program blocks here waiting for the signal
-	<-done
 }
