@@ -59,25 +59,36 @@ type errorJSON struct {
 	// Posix error, when available
 	PosixError string `json:"posix_error,omitempty"`
 	// TODO: remove IP addresses
-	Msg string `json:"msg,omitempty"`
+	Msg         string `json:"msg,omitempty"`
+	AttemptedIP net.IP `json:"attempted_ip,omitempty"`
 }
 
 func makeErrorRecord(result *connectivity.ConnectivityError) *errorJSON {
 	if result == nil {
 		return nil
 	}
+	ip, err := unwrapAll(result.Err)
 	var record = new(errorJSON)
 	record.Op = result.Op
 	record.PosixError = result.PosixError
-	record.Msg = unwrapAll(result.Err).Error()
+	record.Msg = err.Error()
+	record.AttemptedIP = ip
 	return record
 }
 
-func unwrapAll(err error) error {
+func unwrapAll(err error) (net.IP, error) {
+	var ip net.IP
 	for {
+		fmt.Println("Error:", err)
 		unwrapped := errors.Unwrap(err)
+		if ip == nil {
+			ip = extractIPFromError(unwrapped)
+		}
+		// if ip != nil {
+		// 	fmt.Printf("attempted IP: %v\n", ip)
+		// }
 		if unwrapped == nil {
-			return err
+			return ip, err
 		}
 		err = unwrapped
 	}
@@ -96,6 +107,18 @@ func init() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [flags...]\n", path.Base(os.Args[0]))
 		flag.PrintDefaults()
 	}
+}
+
+func extractIPFromError(err error) net.IP {
+	if netErr, ok := err.(*net.OpError); ok {
+		if addr, ok := netErr.Addr.(*net.TCPAddr); ok {
+			return addr.IP
+		}
+		if addr, ok := netErr.Addr.(*net.UDPAddr); ok {
+			return addr.IP
+		}
+	}
+	return nil
 }
 
 func main() {
