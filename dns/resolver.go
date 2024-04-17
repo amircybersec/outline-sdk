@@ -186,16 +186,16 @@ func queryDatagram(conn io.ReadWriter, q dnsmessage.Question) (*dnsmessage.Messa
 			err = nil
 		}
 		if err != nil {
-			return nil, &nestedError{ErrReceive, errors.Join(returnErr, fmt.Errorf("read message failed: %w", err))}
+			return nil, &nestedError{ErrReceive, wrapErrors(returnErr, fmt.Errorf("read message failed: %w", err))}
 		}
 		var msg dnsmessage.Message
 		if err := msg.Unpack(buf[:n]); err != nil {
-			returnErr = errors.Join(returnErr, err)
+			returnErr = wrapErrors(returnErr, err)
 			// Ignore invalid packets that fail to parse. It could be injected.
 			continue
 		}
 		if err := checkResponse(id, q, msg.Header, msg.Questions); err != nil {
-			returnErr = errors.Join(returnErr, err)
+			returnErr = wrapErrors(returnErr, err)
 			continue
 		}
 		return &msg, nil
@@ -390,4 +390,15 @@ func NewHTTPSResolver(sd transport.StreamDialer, resolverAddr string, url string
 		}
 		return &msg, nil
 	})
+}
+
+func wrapErrors(err1, err2 error) error {
+	switch {
+	case err1 == nil:
+		return err2
+	case err2 == nil:
+		return err1
+	default:
+		return fmt.Errorf("%v: %w", err2, err1)
+	}
 }
